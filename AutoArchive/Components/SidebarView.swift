@@ -115,6 +115,7 @@ struct SidebarView: View {
     @State private var showGlow = false
     @State private var personalHidden = false
     @State private var platterScale: CGFloat = 1.0
+    @State private var platterOpacity: CGFloat = 1.0
 
     // Position tracking
     @State private var tabPositions: [UUID: CGRect] = [:]
@@ -134,7 +135,8 @@ struct SidebarView: View {
                 cleanedUpCount: cleanedUpCount,
                 showGlow: showGlow,
                 personalHidden: personalHidden,
-                platterScale: platterScale
+                platterScale: platterScale,
+                platterOpacity: platterOpacity
             )
 
             PinnedTabsView(tabs: pinnedTabs)
@@ -195,12 +197,14 @@ struct SidebarView: View {
         withAnimation(.easeOut(duration: 0.2)) {
             expandPlatter = false
             personalHidden = false
-            showPlatter = false
+            platterOpacity = 0
             showGlow = false
         }
 
         // Phase 2: Restore tabs
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            showPlatter = false
+            platterOpacity = 1.0
             withAnimation(.easeInOut(duration: 0.35)) {
                 openTabs = saved
             }
@@ -216,8 +220,14 @@ struct SidebarView: View {
         withAnimation(.easeOut(duration: 0.25)) {
             expandPlatter = false
             personalHidden = false
-            showPlatter = false
+            platterOpacity = 0
             showGlow = false
+        }
+
+        // Remove platter after animation completes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            showPlatter = false
+            platterOpacity = 1.0
         }
     }
 
@@ -380,6 +390,7 @@ struct TopActionsBar: View {
     var showGlow: Bool = false
     var personalHidden: Bool = false
     var platterScale: CGFloat = 1.0
+    var platterOpacity: CGFloat = 1.0
 
     @State private var isChevronHovered = false
     @State private var glowRotation: Double = 0
@@ -429,6 +440,7 @@ struct TopActionsBar: View {
                         .fill(.white.opacity(0.5))
                         .padding(.leading, expandPlatter ? -8 : 0)
                         .scaleEffect(expandPlatter ? 1.0 : platterScale)
+                        .opacity(platterOpacity)
                 }
             }
             .background {
