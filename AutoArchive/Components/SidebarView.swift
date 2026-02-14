@@ -33,18 +33,23 @@ struct ArcFlightModifier: ViewModifier, Animatable {
     let arcHeight: CGFloat
     let finalScale: CGFloat
     let finalRotation: Double
+    var fadesOnLanding: Bool = false
 
     nonisolated var animatableData: CGFloat {
         get { progress }
         set { progress = newValue }
     }
 
-    private var currentPosition: CGPoint {
-        let t = min(progress, 1.0)
-        let x = startPosition.x + (endPosition.x - startPosition.x) * t
+    private func positionAt(_ t: CGFloat) -> CGPoint {
+        let clamped = max(0, min(1, t))
+        let x = startPosition.x + (endPosition.x - startPosition.x) * clamped
         let controlY = min(startPosition.y, endPosition.y) - arcHeight
-        let y = pow(1 - t, 2) * startPosition.y + 2 * (1 - t) * t * controlY + pow(t, 2) * endPosition.y
+        let y = pow(1 - clamped, 2) * startPosition.y + 2 * (1 - clamped) * clamped * controlY + pow(clamped, 2) * endPosition.y
         return CGPoint(x: x, y: y)
+    }
+
+    private var currentPosition: CGPoint {
+        positionAt(min(progress, 1.0))
     }
 
     private var shadowAmount: CGFloat {
@@ -75,20 +80,81 @@ struct ArcFlightModifier: ViewModifier, Animatable {
             let dismissT = min(progress - 1.0, 1.0)
             return 1.0 - dismissT
         }
+        // Fade out as approaching landing for non-stack favicons
+        if fadesOnLanding && progress > 0.5 {
+            return max(0, 1.0 - (progress - 0.5) / 0.5)
+        }
         return 1.0
     }
 
+    private static let baseColors: [Color] = [
+        Color(red: 1.0, green: 0.2, blue: 0.3),   // bright red
+        Color(red: 1.0, green: 0.4, blue: 0.7),   // hot pink
+        Color(red: 0.9, green: 0.2, blue: 0.9),   // magenta
+        Color(red: 0.6, green: 0.3, blue: 1.0),   // purple
+        Color(red: 0.3, green: 0.5, blue: 1.0),   // blue
+        Color(red: 0.1, green: 0.8, blue: 1.0),   // cyan
+        Color(red: 0.2, green: 0.9, blue: 0.5),   // green
+        Color(red: 0.6, green: 1.0, blue: 0.2),   // lime
+        Color(red: 1.0, green: 0.95, blue: 0.2),  // yellow
+        Color(red: 1.0, green: 0.7, blue: 0.1),   // orange
+        Color(red: 1.0, green: 0.4, blue: 0.2),   // red-orange
+        Color(red: 1.0, green: 0.3, blue: 0.55),  // rose
+    ]
+
+    // Deterministic pseudo-random from seed
+    private static func hash(_ seed: Double) -> Double {
+        let x = sin(seed * 127.1 + 311.7) * 43758.5453
+        return x - x.rounded(.down)
+    }
+
     func body(content: Content) -> some View {
-        content
-            .scaleEffect(scale)
-            .rotationEffect(.degrees(rotation))
-            .opacity(dismissOpacity)
-            .shadow(
-                color: .black.opacity(0.3 * shadowAmount),
-                radius: 20 * shadowAmount,
-                y: 2
-            )
-            .position(currentPosition)
+        ZStack {
+            // Rainbow cloud trail along flight path
+            if progress > 0.01 && progress <= 1.0 {
+                let landingFade: CGFloat = progress < 0.75 ? 1.0 : max(0, (1.0 - progress) / 0.25)
+
+                // Cloud grows over the flight and fades out toward the end
+                let cloudScale: CGFloat = 0.5 + progress * 2.0
+                let cloudFade: CGFloat = progress < 0.5 ? 1.0 : max(0, (1.0 - progress) / 0.5)
+
+                ForEach(0..<20, id: \.self) { i in
+                    let h = Self.hash(Double(i))
+
+                    // Each blob trails behind the favicon along the path
+                    let trailT = progress - CGFloat(i) * 0.02
+                    let visible = trailT > 0
+                    let pos = positionAt(max(0, trailT))
+
+                    // Fade with distance from favicon
+                    let age = CGFloat(i) * 0.02
+                    let fade = max(0, 1.0 - Double(age) / 0.4)
+
+                    // Size grows as animation progresses
+                    let baseSize: CGFloat = 35 + CGFloat(h) * 25
+                    let size = baseSize * cloudScale
+
+                    Circle()
+                        .fill(Self.baseColors[i % Self.baseColors.count])
+                        .frame(width: size, height: size)
+                        .blur(radius: 18 * cloudScale)
+                        .opacity(visible ? fade * 0.1 * cloudFade * landingFade : 0)
+                        .position(pos)
+                }
+            }
+
+            // Main content
+            content
+                .scaleEffect(scale)
+                .rotationEffect(.degrees(rotation))
+                .opacity(dismissOpacity)
+                .shadow(
+                    color: .black.opacity(0.3 * shadowAmount),
+                    radius: 20 * shadowAmount,
+                    y: 2
+                )
+                .position(currentPosition)
+        }
     }
 }
 
@@ -202,7 +268,8 @@ struct SidebarView: View {
                     endPosition: flightEndPosition,
                     arcHeight: 80,
                     finalScale: finalScale,
-                    finalRotation: finalRotation
+                    finalRotation: finalRotation,
+                    fadesOnLanding: item.stackIndex < item.stackCount - 3
                 ))
             }
         }
