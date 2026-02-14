@@ -33,9 +33,16 @@ struct FaviconView: View {
                     .interpolation(.high)
                     .antialiased(true)
                     .scaledToFit()
+                    .brightness(-0.15)
             // Asset-based favicons
             case .google:
                 Image("favicon-google")
+                    .resizable()
+                    .interpolation(.high)
+                    .antialiased(true)
+                    .scaledToFit()
+            case .slack:
+                Image("favicon-slack")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
