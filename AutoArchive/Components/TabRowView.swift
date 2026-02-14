@@ -11,17 +11,21 @@ struct TabRowView: View {
     let tab: TabItem
     var isSelected: Bool = false
     var onSelect: (() -> Void)? = nil
+    var nameHidden: Bool = false
+    var faviconHidden: Bool = false
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 6) {
             FaviconView(favicon: tab.favicon, size: 16)
+                .opacity(faviconHidden ? 0 : 1)
 
             Text(tab.title)
                 .font(.system(size: 12))
                 .foregroundStyle(tab.favicon.isNewTabPlus ? Color.secondary : Color.primary.opacity(0.85))
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .opacity(nameHidden ? 0 : 1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)

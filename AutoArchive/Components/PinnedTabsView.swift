@@ -30,15 +30,20 @@ struct PinnedTabsView: View {
 
 struct PinnedTabCell: View {
     let tab: TabItem
+    @State private var isHovered = false
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.black.opacity(0.05))
+                .fill(isHovered ? Color.white.opacity(0.5) : Color.black.opacity(0.05))
 
-            FaviconView(favicon: tab.favicon, size: 25)
+            FaviconView(favicon: tab.favicon, size: 16)
         }
         .frame(height: 40)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
     }
 }
 

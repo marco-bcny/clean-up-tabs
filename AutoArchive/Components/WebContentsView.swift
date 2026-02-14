@@ -34,7 +34,11 @@ struct WebContentsView: View {
             Spacer()
                 .frame(height: 202)
 
-            DiaLargeLogo()
+            Image("dialogo")
+                .resizable()
+                .interpolation(.high)
+                .antialiased(true)
+                .scaledToFit()
                 .frame(width: 52, height: 43)
 
             Spacer()

@@ -21,74 +21,91 @@ struct FaviconView: View {
             case .remote(let url):
                 AsyncImage(url: url) { image in
                     image.resizable()
+                        .interpolation(.high)
+                        .antialiased(true)
+                        .scaledToFit()
                 } placeholder: {
                     Color.gray.opacity(0.2)
                 }
             case .dia:
-                DiaLogoShape()
-                    .fill(Color.gray.opacity(0.6))
-                    .frame(width: size, height: size * 0.82)
+                Image("favicon-dia")
+                    .resizable()
+                    .interpolation(.high)
+                    .antialiased(true)
+                    .scaledToFit()
             // Asset-based favicons
             case .google:
                 Image("favicon-google")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             case .youtube:
                 Image("favicon-youtube")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             case .wikipedia:
                 Image("favicon-wikipedia")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             case .reddit:
                 Image("favicon-reddit")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             case .pitchfork:
                 Image("favicon-pitchfork")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             case .verge:
                 Image("favicon-verge")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             case .architecturalDigest:
                 Image("favicon-architecturaldesign")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             case .designWithinReach:
                 Image("favicon-designwithinreach")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             case .polygon:
                 Image("favicon-polygon")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             case .nyt:
                 Image("favicon-nyt")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             case .onShoes:
                 Image("favicon-onshoes")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             case .nike:
                 Image("favicon-nike")
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
+                    .scaledToFit()
             }
         }
         .frame(width: size, height: size)
