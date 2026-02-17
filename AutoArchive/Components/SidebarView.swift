@@ -138,7 +138,7 @@ struct ArcFlightModifier: ViewModifier, Animatable {
                         .fill(Self.baseColors[i % Self.baseColors.count])
                         .frame(width: size, height: size)
                         .blur(radius: 18 * cloudScale)
-                        .opacity(visible ? fade * 0.1 * cloudFade * landingFade : 0)
+                        .opacity(visible ? fade * 0.09 * cloudFade * landingFade : 0)
                         .position(pos)
                 }
             }
@@ -240,9 +240,10 @@ struct SidebarView: View {
         .onChange(of: cleanupTrigger) {
             handleToggle()
         }
-        .overlay {
+        .overlay(alignment: .topLeading) {
             let stackAngles: [Double] = [-8, 5, -12, 9, -4, 13, -10, 7, -14, 11]
 
+            ZStack(alignment: .topLeading) {
             ForEach(flyingItems) { item in
                 let finalScale: CGFloat = item.stackCount > 1
                     ? 0.7 + 0.15 * CGFloat(item.stackIndex) / CGFloat(item.stackCount - 1)
@@ -272,6 +273,9 @@ struct SidebarView: View {
                     fadesOnLanding: item.stackIndex < item.stackCount - 3
                 ))
             }
+            }
+            .frame(width: 800, height: 1200)
+            .allowsHitTesting(false)
         }
     }
 
