@@ -7,167 +7,6 @@
 
 import SwiftUI
 
-// MARK: - Preference Keys
-
-struct TabPositionKey: PreferenceKey {
-    static let defaultValue: [UUID: CGRect] = [:]
-    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
-
-struct ChevronPositionKey: PreferenceKey {
-    static let defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        let next = nextValue()
-        if next != .zero { value = next }
-    }
-}
-
-// MARK: - Arc Flight Modifier
-
-struct ArcFlightModifier: ViewModifier, Animatable {
-    var progress: CGFloat
-    let startPosition: CGPoint
-    let endPosition: CGPoint
-    let arcHeight: CGFloat
-    let finalScale: CGFloat
-    let finalRotation: Double
-    var fadesOnLanding: Bool = false
-
-    nonisolated var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    private func positionAt(_ t: CGFloat) -> CGPoint {
-        let clamped = max(0, min(1, t))
-        let x = startPosition.x + (endPosition.x - startPosition.x) * clamped
-        let controlY = min(startPosition.y, endPosition.y) - arcHeight
-        let y = pow(1 - clamped, 2) * startPosition.y + 2 * (1 - clamped) * clamped * controlY + pow(clamped, 2) * endPosition.y
-        return CGPoint(x: x, y: y)
-    }
-
-    private var currentPosition: CGPoint {
-        positionAt(min(progress, 1.0))
-    }
-
-    private var shadowAmount: CGFloat {
-        let t = min(progress, 1.0)
-        return sin(.pi * t)
-    }
-
-    private var scale: CGFloat {
-        if progress > 1.0 {
-            let dismissT = min(progress - 1.0, 1.0)
-            return finalScale * (1.0 - dismissT)
-        }
-        let peak: CGFloat = 1.3
-        if progress < 0.25 {
-            return 1.0 + (progress / 0.25) * (peak - 1.0)
-        } else {
-            let t = (progress - 0.25) / 0.75
-            return peak + (finalScale - peak) * t
-        }
-    }
-
-    private var rotation: Double {
-        finalRotation * min(progress, 1.0)
-    }
-
-    private var dismissOpacity: CGFloat {
-        if progress > 1.0 {
-            let dismissT = min(progress - 1.0, 1.0)
-            return 1.0 - dismissT
-        }
-        // Fade out as approaching landing for non-stack favicons
-        if fadesOnLanding && progress > 0.5 {
-            return max(0, 1.0 - (progress - 0.5) / 0.5)
-        }
-        return 1.0
-    }
-
-    private static let baseColors: [Color] = [
-        Color(red: 1.0, green: 0.2, blue: 0.3),   // bright red
-        Color(red: 1.0, green: 0.4, blue: 0.7),   // hot pink
-        Color(red: 0.9, green: 0.2, blue: 0.9),   // magenta
-        Color(red: 0.6, green: 0.3, blue: 1.0),   // purple
-        Color(red: 0.3, green: 0.5, blue: 1.0),   // blue
-        Color(red: 0.1, green: 0.8, blue: 1.0),   // cyan
-        Color(red: 0.2, green: 0.9, blue: 0.5),   // green
-        Color(red: 0.6, green: 1.0, blue: 0.2),   // lime
-        Color(red: 1.0, green: 0.95, blue: 0.2),  // yellow
-        Color(red: 1.0, green: 0.7, blue: 0.1),   // orange
-        Color(red: 1.0, green: 0.4, blue: 0.2),   // red-orange
-        Color(red: 1.0, green: 0.3, blue: 0.55),  // rose
-    ]
-
-    // Deterministic pseudo-random from seed
-    private static func hash(_ seed: Double) -> Double {
-        let x = sin(seed * 127.1 + 311.7) * 43758.5453
-        return x - x.rounded(.down)
-    }
-
-    func body(content: Content) -> some View {
-        ZStack {
-            // Rainbow cloud trail along flight path
-            if progress > 0.01 && progress <= 1.0 {
-                let landingFade: CGFloat = progress < 0.75 ? 1.0 : max(0, (1.0 - progress) / 0.25)
-
-                // Cloud grows over the flight and fades out toward the end
-                let cloudScale: CGFloat = 0.5 + progress * 2.0
-                let cloudFade: CGFloat = progress < 0.5 ? 1.0 : max(0, (1.0 - progress) / 0.5)
-
-                ForEach(0..<20, id: \.self) { i in
-                    let h = Self.hash(Double(i))
-
-                    // Each blob trails behind the favicon along the path
-                    let trailT = progress - CGFloat(i) * 0.02
-                    let visible = trailT > 0
-                    let pos = positionAt(max(0, trailT))
-
-                    // Fade with distance from favicon
-                    let age = CGFloat(i) * 0.02
-                    let fade = max(0, 1.0 - Double(age) / 0.4)
-
-                    // Size grows as animation progresses
-                    let baseSize: CGFloat = 35 + CGFloat(h) * 25
-                    let size = baseSize * cloudScale
-
-                    Circle()
-                        .fill(Self.baseColors[i % Self.baseColors.count])
-                        .frame(width: size, height: size)
-                        .blur(radius: 18 * cloudScale)
-                        .opacity(visible ? fade * 0.09 * cloudFade * landingFade : 0)
-                        .position(pos)
-                }
-            }
-
-            // Main content
-            content
-                .scaleEffect(scale)
-                .rotationEffect(.degrees(rotation))
-                .opacity(dismissOpacity)
-                .shadow(
-                    color: .black.opacity(0.3 * shadowAmount),
-                    radius: 20 * shadowAmount,
-                    y: 2
-                )
-                .position(currentPosition)
-        }
-    }
-}
-
-// MARK: - Flying Favicon Data
-
-struct FlyingFaviconItem: Identifiable {
-    let id: UUID
-    let favicon: TabItem.FaviconType
-    let startPosition: CGPoint
-    let stackIndex: Int
-    let stackCount: Int
-}
-
 // MARK: - SidebarView
 
 struct SidebarView: View {
@@ -180,7 +19,6 @@ struct SidebarView: View {
     @State private var cleanupIDs: Set<UUID> = []
     @State private var namesFaded = false
     @State private var rowsCollapsed = false
-    @State private var launchedIDs: Set<UUID> = []
     @State private var cleanedUpCount = 0
     @State private var hasCleanedUp = false
     @State private var isAnimating = false
@@ -191,32 +29,25 @@ struct SidebarView: View {
     // Platter state
     @State private var showPlatter = false
     @State private var expandPlatter = false
-    @State private var chevronOpacity: CGFloat = 1.0
     @State private var showGlow = false
     @State private var personalHidden = false
     @State private var platterScale: CGFloat = 1.0
     @State private var platterOpacity: CGFloat = 1.0
 
-    // Position tracking
-    @State private var tabPositions: [UUID: CGRect] = [:]
-    @State private var chevronRect: CGRect = .zero
-    @State private var flightEndPosition: CGPoint = .zero
-
-    // Flying favicons
-    @State private var flyingItems: [FlyingFaviconItem] = []
-    @State private var flightProgress: [UUID: CGFloat] = [:]
+    // Stack favicons shown in the platter
+    @State private var stackFavicons: [TabItem.FaviconType] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             TopActionsBar(
                 showPlatter: showPlatter,
                 expandPlatter: expandPlatter,
-                chevronOpacity: chevronOpacity,
                 cleanedUpCount: cleanedUpCount,
                 showGlow: showGlow,
                 personalHidden: personalHidden,
                 platterScale: platterScale,
-                platterOpacity: platterOpacity
+                platterOpacity: platterOpacity,
+                stackFavicons: stackFavicons
             )
 
             PinnedTabsView(tabs: pinnedTabs)
@@ -228,54 +59,13 @@ struct SidebarView: View {
                 selectedTabId: $selectedTabId,
                 cleanupIDs: cleanupIDs,
                 namesFaded: namesFaded,
-                rowsCollapsed: rowsCollapsed,
-                launchedIDs: launchedIDs
+                rowsCollapsed: rowsCollapsed
             )
             .padding(.leading, 6)
         }
         .frame(width: 249)
-        .coordinateSpace(name: "sidebar")
-        .onPreferenceChange(TabPositionKey.self) { tabPositions = $0 }
-        .onPreferenceChange(ChevronPositionKey.self) { chevronRect = $0 }
         .onChange(of: cleanupTrigger) {
             handleToggle()
-        }
-        .overlay(alignment: .topLeading) {
-            let stackAngles: [Double] = [-8, 5, -12, 9, -4, 13, -10, 7, -14, 11]
-
-            ZStack(alignment: .topLeading) {
-            ForEach(flyingItems) { item in
-                let finalScale: CGFloat = item.stackCount > 1
-                    ? 0.7 + 0.15 * CGFloat(item.stackIndex) / CGFloat(item.stackCount - 1)
-                    : 0.85
-                let finalRotation = item.stackCount > 1
-                    ? stackAngles[item.stackIndex % stackAngles.count]
-                    : 0.0
-
-                // Shadow fades from 10% (top) to 0% over ~4 items from the top
-                let distFromTop = item.stackCount - 1 - item.stackIndex
-                let shadowOpacity = max(0, 0.10 - 0.10 * CGFloat(distFromTop) / 3.0)
-
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(.white)
-                        .frame(width: 20, height: 20)
-                        .shadow(color: .black.opacity(shadowOpacity), radius: 2, y: 2)
-                    FaviconView(favicon: item.favicon, size: 16)
-                }
-                .modifier(ArcFlightModifier(
-                    progress: flightProgress[item.id] ?? 0,
-                    startPosition: item.startPosition,
-                    endPosition: flightEndPosition,
-                    arcHeight: 80,
-                    finalScale: finalScale,
-                    finalRotation: finalRotation,
-                    fadesOnLanding: item.stackIndex < item.stackCount - 3
-                ))
-            }
-            }
-            .frame(width: 800, height: 1200)
-            .allowsHitTesting(false)
         }
     }
 
@@ -297,31 +87,23 @@ struct SidebarView: View {
 
         let dismissDuration = 0.2
 
-        // Phase 1: Label collapses + entire stack dismisses simultaneously
         withAnimation(.easeOut(duration: dismissDuration)) {
             expandPlatter = false
             personalHidden = false
             showGlow = false
-            for item in flyingItems {
-                flightProgress[item.id] = 2.0
-            }
         }
 
-        // Phase 2: Background fades out once it's back to square size
         DispatchQueue.main.asyncAfter(deadline: .now() + dismissDuration) {
             withAnimation(.easeOut(duration: 0.1)) {
                 platterOpacity = 0
-                chevronOpacity = 1.0
             }
         }
 
-        // Phase 3: Restore tabs
         let cleanupTime = dismissDuration + 0.15
         DispatchQueue.main.asyncAfter(deadline: .now() + cleanupTime) {
             showPlatter = false
             platterOpacity = 1.0
-            flyingItems = []
-            flightProgress = [:]
+            stackFavicons = []
             withAnimation(.easeInOut(duration: 0.35)) {
                 openTabs = saved
             }
@@ -335,30 +117,22 @@ struct SidebarView: View {
     private func dismissPlatter() {
         let dismissDuration = 0.2
 
-        // Phase 1: Label collapses + entire stack dismisses simultaneously
         withAnimation(.easeOut(duration: dismissDuration)) {
             expandPlatter = false
             personalHidden = false
             showGlow = false
-            for item in flyingItems {
-                flightProgress[item.id] = 2.0
-            }
         }
 
-        // Phase 2: Background fades out once it's back to square size
         DispatchQueue.main.asyncAfter(deadline: .now() + dismissDuration) {
             withAnimation(.easeOut(duration: 0.1)) {
                 platterOpacity = 0
-                chevronOpacity = 1.0
             }
         }
 
-        // Phase 3: Clean up
         DispatchQueue.main.asyncAfter(deadline: .now() + dismissDuration + 0.15) {
             showPlatter = false
             platterOpacity = 1.0
-            flyingItems = []
-            flightProgress = [:]
+            stackFavicons = []
         }
     }
 
@@ -397,25 +171,24 @@ struct SidebarView: View {
 
         cleanupIDs = idsToRemove
         cleanedUpCount = idsToRemove.count
-        flightEndPosition = CGPoint(x: chevronRect.midX, y: chevronRect.midY)
 
-        // Collect tabs to remove in order
+        // Pick 3 favicons for the stack (last 3 from cleanup set)
         let tabsToRemove = openTabs.filter { idsToRemove.contains($0.id) }
-        let totalCount = tabsToRemove.count
+        stackFavicons = Array(tabsToRemove.suffix(3).map { $0.favicon })
 
         // Phase 1: Fade names
         withAnimation(.easeOut(duration: 0.3)) {
             namesFaded = true
         }
 
-        // Phase 2: Collapse rows
+        // Phase 2: Collapse rows (favicons fade out with their rows)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             withAnimation(.easeInOut(duration: 0.4)) {
                 rowsCollapsed = true
             }
         }
 
-        // Phase 3: Show platter + glow as favicons start flying
+        // Phase 3: Show platter + glow
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             withAnimation(.easeOut(duration: 0.25)) {
                 showPlatter = true
@@ -426,68 +199,14 @@ struct SidebarView: View {
             }
         }
 
-        // Scale back down with bounce after scale-up + hold
+        // Scale back down with bounce
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15 + 0.45 + 0.5) {
             withAnimation(.spring(response: 0.45, dampingFraction: 0.6)) {
                 platterScale = 1.0
             }
         }
 
-        // Fade out chevron as first favicon approaches
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-            withAnimation(.easeOut(duration: 0.2)) {
-                chevronOpacity = 0
-            }
-        }
-
-        // Phase 3b: Fly favicons (staggered) — each launches from its current row position
-        for (index, tab) in tabsToRemove.enumerated() {
-            let delay = 0.15 + Double(index) * 0.06
-            flightProgress[tab.id] = 0
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                // Capture current position at launch time
-                let startPos: CGPoint
-                if let rect = tabPositions[tab.id] {
-                    startPos = CGPoint(x: rect.minX + 18, y: rect.midY)
-                } else {
-                    startPos = flightEndPosition
-                }
-
-                let item = FlyingFaviconItem(
-                    id: tab.id,
-                    favicon: tab.favicon,
-                    startPosition: startPos,
-                    stackIndex: index,
-                    stackCount: totalCount
-                )
-                flyingItems.append(item)
-                launchedIDs.insert(tab.id)
-
-                withAnimation(.easeInOut(duration: 0.69)) {
-                    flightProgress[tab.id] = 1.0
-                }
-            }
-        }
-
-        // Phase 5a: Remove tabs after they fully land (keep stack visible)
-        let lastDelay = Double(max(0, totalCount - 1)) * 0.06
-        let allLandTime = 0.15 + lastDelay + 0.69 + 0.15
-        DispatchQueue.main.asyncAfter(deadline: .now() + allLandTime) {
-            // Remove tabs while they're still collapsed (height 0), then reset state
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                openTabs.removeAll { idsToRemove.contains($0.id) }
-            }
-
-            // Reset cleanup state after removal so remaining rows aren't affected
-            cleanupIDs = []
-            namesFaded = false
-            rowsCollapsed = false
-            launchedIDs = []
-        }
-
-        // Phase 5b: Expand platter to reveal label as favicons start flying
+        // Phase 4: Expand platter — label + stack appear together
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                 expandPlatter = true
@@ -497,10 +216,24 @@ struct SidebarView: View {
             hasCleanedUp = true
             isAnimating = false
 
-            // Phase 6: Auto-dismiss after 3 seconds
+            // Phase 5: Auto-dismiss after 3 seconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                 dismissPlatter()
             }
+        }
+
+        // Phase 6: Remove tabs after rows collapse
+        let rowsCollapseTime = 0.15 + 0.4 + 0.05
+        DispatchQueue.main.asyncAfter(deadline: .now() + rowsCollapseTime) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                openTabs.removeAll { idsToRemove.contains($0.id) }
+            }
+
+            cleanupIDs = []
+            namesFaded = false
+            rowsCollapsed = false
         }
     }
 }
@@ -523,17 +256,19 @@ enum DiaChroma {
 struct TopActionsBar: View {
     var showPlatter: Bool = false
     var expandPlatter: Bool = false
-    var chevronOpacity: CGFloat = 1.0
     var cleanedUpCount: Int = 0
     var showGlow: Bool = false
     var personalHidden: Bool = false
     var platterScale: CGFloat = 1.0
     var platterOpacity: CGFloat = 1.0
+    var stackFavicons: [TabItem.FaviconType] = []
 
     @State private var isChevronHovered = false
     @State private var glowRotation: Double = 0
 
     private let trafficLightWidth: CGFloat = 72
+    private let stackAngles: [Double] = [-3, 0, 3]
+    private let stackOffsets: [(x: CGFloat, y: CGFloat)] = [(-2, 1.5), (0, 0), (1.5, -1.5)]
 
     var body: some View {
         HStack(spacing: 10) {
@@ -550,6 +285,25 @@ struct TopActionsBar: View {
 
             // Standalone chevron.down menu + cleanup platter
             HStack(spacing: 0) {
+                // Favicon stack — left of label
+                ZStack {
+                    ForEach(Array(stackFavicons.enumerated()), id: \.offset) { index, favicon in
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(.white)
+                                .frame(width: 16, height: 16)
+                                .shadow(color: .black.opacity(max(0, 0.08 - 0.04 * CGFloat(stackFavicons.count - 1 - index))), radius: 1.5, y: 1)
+                            FaviconView(favicon: favicon, size: 12)
+                        }
+                        .rotationEffect(.degrees(stackAngles[index % stackAngles.count]))
+                        .offset(x: stackOffsets[index % stackOffsets.count].x,
+                                y: stackOffsets[index % stackOffsets.count].y)
+                    }
+                }
+                .frame(width: expandPlatter ? 24 : 0, height: 16)
+                .scaleEffect(expandPlatter ? 1 : 0.5, anchor: .trailing)
+                .opacity(expandPlatter ? 1 : 0)
+
                 Text("Cleaned up \(cleanedUpCount) Tabs")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.primary)
@@ -562,8 +316,6 @@ struct TopActionsBar: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.primary)
-                    .opacity(showPlatter ? chevronOpacity : 1.0)
-                    .scaleEffect(showPlatter ? (0.5 + 0.5 * chevronOpacity) : 1.0)
                     .frame(width: 32, height: 32)
                     .background {
                         if isChevronHovered && !showPlatter {
@@ -594,7 +346,7 @@ struct TopActionsBar: View {
                             )
                         )
                         .blur(radius: 8)
-                        .opacity(0.2)
+                        .opacity(0.1)
                         .scaleEffect(expandPlatter ? 1.15 : 1.15 * platterScale)
                         .padding(.leading, expandPlatter ? -8 : 0)
                 }
@@ -614,15 +366,6 @@ struct TopActionsBar: View {
             .onHover { hovering in
                 isChevronHovered = hovering
             }
-            .background(
-                GeometryReader { geo in
-                    Color.clear
-                        .preference(
-                            key: ChevronPositionKey.self,
-                            value: geo.frame(in: .named("sidebar"))
-                        )
-                }
-            )
             .padding(.trailing, 16)
         }
         .frame(height: 14)
@@ -638,7 +381,6 @@ struct OpenTabsSection: View {
     var cleanupIDs: Set<UUID> = []
     var namesFaded = false
     var rowsCollapsed = false
-    var launchedIDs: Set<UUID> = []
 
     private func selectTab(_ tab: TabItem) {
         selectedTabId = tab.id
@@ -654,17 +396,7 @@ struct OpenTabsSection: View {
                         tab: tab,
                         isSelected: tab.id == selectedTabId,
                         onSelect: { selectTab(tab) },
-                        nameHidden: isBeingCleaned && namesFaded,
-                        faviconHidden: launchedIDs.contains(tab.id)
-                    )
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear
-                                .preference(
-                                    key: TabPositionKey.self,
-                                    value: [tab.id: geo.frame(in: .named("sidebar"))]
-                                )
-                        }
+                        nameHidden: isBeingCleaned && namesFaded
                     )
                     .padding(.bottom, isBeingCleaned && rowsCollapsed ? 0 : 4)
                     .frame(height: isBeingCleaned && rowsCollapsed ? 0 : 36)
