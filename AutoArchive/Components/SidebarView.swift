@@ -34,8 +34,6 @@ struct SidebarView: View {
     @State private var platterScale: CGFloat = 1.0
     @State private var platterOpacity: CGFloat = 1.0
 
-    // Stack favicons shown in the platter
-    @State private var stackFavicons: [TabItem.FaviconType] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -46,8 +44,7 @@ struct SidebarView: View {
                 showGlow: showGlow,
                 personalHidden: personalHidden,
                 platterScale: platterScale,
-                platterOpacity: platterOpacity,
-                stackFavicons: stackFavicons
+                platterOpacity: platterOpacity
             )
 
             PinnedTabsView(tabs: pinnedTabs)
@@ -85,25 +82,24 @@ struct SidebarView: View {
     private func restoreTabs() {
         guard let saved = savedTabs else { return }
 
-        let dismissDuration = 0.2
+        let dismissDuration = 0.15
 
-        withAnimation(.easeOut(duration: dismissDuration)) {
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.9)) {
             expandPlatter = false
             personalHidden = false
             showGlow = false
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + dismissDuration) {
-            withAnimation(.easeOut(duration: 0.1)) {
+            withAnimation(.easeOut(duration: 0.08)) {
                 platterOpacity = 0
             }
         }
 
-        let cleanupTime = dismissDuration + 0.15
+        let cleanupTime = dismissDuration + 0.1
         DispatchQueue.main.asyncAfter(deadline: .now() + cleanupTime) {
             showPlatter = false
             platterOpacity = 1.0
-            stackFavicons = []
             withAnimation(.easeInOut(duration: 0.35)) {
                 openTabs = saved
             }
@@ -115,24 +111,23 @@ struct SidebarView: View {
     // MARK: - Dismiss Platter
 
     private func dismissPlatter() {
-        let dismissDuration = 0.2
+        let dismissDuration = 0.15
 
-        withAnimation(.easeOut(duration: dismissDuration)) {
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.9)) {
             expandPlatter = false
             personalHidden = false
             showGlow = false
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + dismissDuration) {
-            withAnimation(.easeOut(duration: 0.1)) {
+            withAnimation(.easeOut(duration: 0.08)) {
                 platterOpacity = 0
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + dismissDuration + 0.15) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + dismissDuration + 0.1) {
             showPlatter = false
             platterOpacity = 1.0
-            stackFavicons = []
         }
     }
 
@@ -172,10 +167,6 @@ struct SidebarView: View {
         cleanupIDs = idsToRemove
         cleanedUpCount = idsToRemove.count
 
-        // Pick 3 favicons for the stack (last 3 from cleanup set)
-        let tabsToRemove = openTabs.filter { idsToRemove.contains($0.id) }
-        stackFavicons = Array(tabsToRemove.suffix(3).map { $0.favicon })
-
         // Phase 1: Fade names
         withAnimation(.easeOut(duration: 0.3)) {
             namesFaded = true
@@ -208,7 +199,7 @@ struct SidebarView: View {
 
         // Phase 4: Expand platter — label + stack appear together
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
                 expandPlatter = true
                 personalHidden = true
             }
@@ -261,14 +252,11 @@ struct TopActionsBar: View {
     var personalHidden: Bool = false
     var platterScale: CGFloat = 1.0
     var platterOpacity: CGFloat = 1.0
-    var stackFavicons: [TabItem.FaviconType] = []
 
     @State private var isChevronHovered = false
     @State private var glowRotation: Double = 0
 
     private let trafficLightWidth: CGFloat = 72
-    private let stackAngles: [Double] = [-3, 0, 3]
-    private let stackOffsets: [(x: CGFloat, y: CGFloat)] = [(-2, 1.5), (0, 0), (1.5, -1.5)]
 
     var body: some View {
         HStack(spacing: 10) {
@@ -285,25 +273,6 @@ struct TopActionsBar: View {
 
             // Standalone chevron.down menu + cleanup platter
             HStack(spacing: 0) {
-                // Favicon stack — left of label
-                ZStack {
-                    ForEach(Array(stackFavicons.enumerated()), id: \.offset) { index, favicon in
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(.white)
-                                .frame(width: 16, height: 16)
-                                .shadow(color: .black.opacity(max(0, 0.08 - 0.04 * CGFloat(stackFavicons.count - 1 - index))), radius: 1.5, y: 1)
-                            FaviconView(favicon: favicon, size: 12)
-                        }
-                        .rotationEffect(.degrees(stackAngles[index % stackAngles.count]))
-                        .offset(x: stackOffsets[index % stackOffsets.count].x,
-                                y: stackOffsets[index % stackOffsets.count].y)
-                    }
-                }
-                .frame(width: expandPlatter ? 24 : 0, height: 16)
-                .scaleEffect(expandPlatter ? 1 : 0.5, anchor: .trailing)
-                .opacity(expandPlatter ? 1 : 0)
-
                 Text("Cleaned up \(cleanedUpCount) Tabs")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.primary)
@@ -330,7 +299,7 @@ struct TopActionsBar: View {
                 if showPlatter {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(.white.opacity(0.5))
-                        .padding(.leading, expandPlatter ? -8 : 0)
+                        .padding(.leading, expandPlatter ? -10 : 0)
                         .scaleEffect(expandPlatter ? 1.0 : platterScale)
                         .opacity(platterOpacity)
                 }
@@ -348,7 +317,7 @@ struct TopActionsBar: View {
                         .blur(radius: 8)
                         .opacity(0.1)
                         .scaleEffect(expandPlatter ? 1.15 : 1.15 * platterScale)
-                        .padding(.leading, expandPlatter ? -8 : 0)
+                        .padding(.leading, expandPlatter ? -10 : 0)
                 }
             }
             .onChange(of: showGlow) { _, active in
