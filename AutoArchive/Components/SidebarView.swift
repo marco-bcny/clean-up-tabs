@@ -15,18 +15,8 @@ struct SidebarView: View {
     @Binding var selectedTabId: UUID?
     var cleanupTrigger: Int = 0
 
-    // Cleanup animation state
-    @State private var cleanupIDs: Set<UUID> = []
-    @State private var namesFaded = false
-    @State private var rowsCollapsed = false
-    @State private var cleanedUpCount = 0
-    @State private var hasCleanedUp = false
-    @State private var isAnimating = false
-
-    // Saved state for restore
-    @State private var savedTabs: [TabItem]? = nil
-
     // Platter state
+    @State private var isAnimating = false
     @State private var showPlatter = false
     @State private var expandPlatter = false
     @State private var showGlow = false
@@ -34,13 +24,12 @@ struct SidebarView: View {
     @State private var platterScale: CGFloat = 1.0
     @State private var platterOpacity: CGFloat = 1.0
 
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             TopActionsBar(
                 showPlatter: showPlatter,
                 expandPlatter: expandPlatter,
-                cleanedUpCount: cleanedUpCount,
+                cleanedUpCount: TabItem.cleanedUpCount,
                 showGlow: showGlow,
                 personalHidden: personalHidden,
                 platterScale: platterScale,
@@ -53,58 +42,13 @@ struct SidebarView: View {
 
             OpenTabsSection(
                 tabs: $openTabs,
-                selectedTabId: $selectedTabId,
-                cleanupIDs: cleanupIDs,
-                namesFaded: namesFaded,
-                rowsCollapsed: rowsCollapsed
+                selectedTabId: $selectedTabId
             )
             .padding(.leading, 6)
         }
         .frame(width: 249)
         .onChange(of: cleanupTrigger) {
-            handleToggle()
-        }
-    }
-
-    // MARK: - Chevron tap handler (toggle)
-
-    private func handleToggle() {
-        guard !isAnimating else { return }
-        if hasCleanedUp {
-            restoreTabs()
-        } else {
             performCleanup()
-        }
-    }
-
-    // MARK: - Restore
-
-    private func restoreTabs() {
-        guard let saved = savedTabs else { return }
-
-        let dismissDuration = 0.15
-
-        withAnimation(.spring(response: 0.2, dampingFraction: 0.9)) {
-            expandPlatter = false
-            personalHidden = false
-            showGlow = false
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + dismissDuration) {
-            withAnimation(.easeOut(duration: 0.08)) {
-                platterOpacity = 0
-            }
-        }
-
-        let cleanupTime = dismissDuration + 0.1
-        DispatchQueue.main.asyncAfter(deadline: .now() + cleanupTime) {
-            showPlatter = false
-            platterOpacity = 1.0
-            withAnimation(.easeInOut(duration: 0.35)) {
-                openTabs = saved
-            }
-            savedTabs = nil
-            hasCleanedUp = false
         }
     }
 
@@ -131,100 +75,41 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Cleanup
+    // MARK: - Cleanup Animation
 
     private func performCleanup() {
+        guard !isAnimating else { return }
         isAnimating = true
 
-        // Save current state for restore
-        savedTabs = openTabs
-
-        let allTabs = Array(openTabs.dropLast()) // exclude + button
-        var idsToRemove: Set<UUID> = []
-
-        // Inactive new tabs (not selected, not +)
-        for tab in allTabs {
-            if tab.title == "New Tab" && !tab.isSelected {
-                idsToRemove.insert(tab.id)
-            }
+        // Show platter + glow
+        withAnimation(.easeOut(duration: 0.25)) {
+            showPlatter = true
+            showGlow = true
         }
-
-        // Duplicates by title (keep last occurrence, remove earlier ones)
-        var seen: [String: UUID] = [:]
-        for tab in allTabs.reversed() where tab.title != "New Tab" {
-            if seen[tab.title] != nil {
-                idsToRemove.insert(tab.id)
-            } else {
-                seen[tab.title] = tab.id
-            }
-        }
-
-        guard !idsToRemove.isEmpty else {
-            isAnimating = false
-            return
-        }
-
-        cleanupIDs = idsToRemove
-        cleanedUpCount = idsToRemove.count
-
-        // Phase 1: Fade names
-        withAnimation(.easeOut(duration: 0.3)) {
-            namesFaded = true
-        }
-
-        // Phase 2: Collapse rows (favicons fade out with their rows)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.easeInOut(duration: 0.4)) {
-                rowsCollapsed = true
-            }
-        }
-
-        // Phase 3: Show platter + glow
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.easeOut(duration: 0.25)) {
-                showPlatter = true
-                showGlow = true
-            }
-            withAnimation(.easeOut(duration: 0.45)) {
-                platterScale = 1.28
-            }
+        withAnimation(.easeOut(duration: 0.45)) {
+            platterScale = 1.28
         }
 
         // Scale back down with bounce
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15 + 0.45 + 0.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45 + 0.5) {
             withAnimation(.spring(response: 0.45, dampingFraction: 0.6)) {
                 platterScale = 1.0
             }
         }
 
-        // Phase 4: Expand platter — label + stack appear together
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+        // Expand platter — show label
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
                 expandPlatter = true
                 personalHidden = true
             }
 
-            hasCleanedUp = true
             isAnimating = false
 
-            // Phase 5: Auto-dismiss after 3 seconds
+            // Auto-dismiss after 3 seconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                 dismissPlatter()
             }
-        }
-
-        // Phase 6: Remove tabs after rows collapse
-        let rowsCollapseTime = 0.15 + 0.4 + 0.05
-        DispatchQueue.main.asyncAfter(deadline: .now() + rowsCollapseTime) {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                openTabs.removeAll { idsToRemove.contains($0.id) }
-            }
-
-            cleanupIDs = []
-            namesFaded = false
-            rowsCollapsed = false
         }
     }
 }
@@ -347,9 +232,6 @@ struct TopActionsBar: View {
 struct OpenTabsSection: View {
     @Binding var tabs: [TabItem]
     @Binding var selectedTabId: UUID?
-    var cleanupIDs: Set<UUID> = []
-    var namesFaded = false
-    var rowsCollapsed = false
 
     private func selectTab(_ tab: TabItem) {
         selectedTabId = tab.id
@@ -359,18 +241,12 @@ struct OpenTabsSection: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(tabs.dropLast()) { tab in
-                    let isBeingCleaned = cleanupIDs.contains(tab.id)
-
                     TabRowView(
                         tab: tab,
                         isSelected: tab.id == selectedTabId,
-                        onSelect: { selectTab(tab) },
-                        nameHidden: isBeingCleaned && namesFaded
+                        onSelect: { selectTab(tab) }
                     )
-                    .padding(.bottom, isBeingCleaned && rowsCollapsed ? 0 : 4)
-                    .frame(height: isBeingCleaned && rowsCollapsed ? 0 : 36)
-                    .clipped()
-                    .opacity(isBeingCleaned && rowsCollapsed ? 0 : 1)
+                    .padding(.bottom, 4)
                 }
 
                 if let lastTab = tabs.last {
