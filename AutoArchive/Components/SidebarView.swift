@@ -138,7 +138,7 @@ struct ArcFlightModifier: ViewModifier, Animatable {
                         .fill(Self.baseColors[i % Self.baseColors.count])
                         .frame(width: size, height: size)
                         .blur(radius: 18 * cloudScale)
-                        .opacity(visible ? fade * 0.09 * cloudFade * landingFade : 0)
+                        .opacity(visible ? fade * 0.04 * cloudFade * landingFade : 0)
                         .position(pos)
                 }
             }
@@ -178,8 +178,8 @@ struct SidebarView: View {
 
     // Cleanup animation state
     @State private var cleanupIDs: Set<UUID> = []
-    @State private var namesFaded = false
-    @State private var rowsCollapsed = false
+    @State private var collapsedIDs: Set<UUID> = []
+    @State private var fadedNameIDs: Set<UUID> = []
     @State private var launchedIDs: Set<UUID> = []
     @State private var cleanedUpCount = 0
     @State private var hasCleanedUp = false
@@ -231,8 +231,8 @@ struct SidebarView: View {
                 tabs: $openTabs,
                 selectedTabId: $selectedTabId,
                 cleanupIDs: cleanupIDs,
-                namesFaded: namesFaded,
-                rowsCollapsed: rowsCollapsed,
+                collapsedIDs: collapsedIDs,
+                fadedNameIDs: fadedNameIDs,
                 launchedIDs: launchedIDs
             )
             .padding(.leading, 6)
@@ -260,11 +260,15 @@ struct SidebarView: View {
                 let distFromTop = item.stackCount - 1 - item.stackIndex
                 let shadowOpacity = max(0, 0.10 - 0.10 * CGFloat(distFromTop) / 3.0)
 
+                let cardProgress = flightProgress[item.id] ?? 0
+                let cardOpacity = min(1.0, cardProgress / 0.15)
+
                 ZStack {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(.white)
                         .frame(width: 20, height: 20)
                         .shadow(color: .black.opacity(shadowOpacity), radius: 2, y: 2)
+                        .opacity(cardOpacity)
                     FaviconView(favicon: item.favicon, size: 16)
                 }
                 .modifier(ArcFlightModifier(
@@ -411,18 +415,6 @@ struct SidebarView: View {
         let tabsToRemove = openTabs.filter { idsToRemove.contains($0.id) }
         let totalCount = tabsToRemove.count
 
-        // Phase 1: Fade names
-        withAnimation(.easeOut(duration: 0.3)) {
-            namesFaded = true
-        }
-
-        // Phase 2: Collapse rows
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.easeInOut(duration: 0.4)) {
-                rowsCollapsed = true
-            }
-        }
-
         // Phase 3: Show platter + glow as favicons start flying
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             withAnimation(.easeOut(duration: 0.25)) {
@@ -471,6 +463,16 @@ struct SidebarView: View {
                 flyingItems.append(item)
                 launchedIDs.insert(tab.id)
 
+                // Fade out tab name
+                withAnimation(.easeOut(duration: 0.3)) {
+                    fadedNameIDs.insert(tab.id)
+                }
+
+                // Collapse this row as its favicon launches
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    collapsedIDs.insert(tab.id)
+                }
+
                 withAnimation(.easeInOut(duration: 0.69)) {
                     flightProgress[tab.id] = 1.0
                 }
@@ -490,8 +492,8 @@ struct SidebarView: View {
 
             // Reset cleanup state after removal so remaining rows aren't affected
             cleanupIDs = []
-            namesFaded = false
-            rowsCollapsed = false
+            collapsedIDs = []
+            fadedNameIDs = []
             launchedIDs = []
         }
 
@@ -716,8 +718,8 @@ struct OpenTabsSection: View {
     @Binding var tabs: [TabItem]
     @Binding var selectedTabId: UUID?
     var cleanupIDs: Set<UUID> = []
-    var namesFaded = false
-    var rowsCollapsed = false
+    var collapsedIDs: Set<UUID> = []
+    var fadedNameIDs: Set<UUID> = []
     var launchedIDs: Set<UUID> = []
 
     private func selectTab(_ tab: TabItem) {
@@ -734,7 +736,7 @@ struct OpenTabsSection: View {
                         tab: tab,
                         isSelected: tab.id == selectedTabId,
                         onSelect: { selectTab(tab) },
-                        nameHidden: isBeingCleaned && namesFaded,
+                        nameHidden: fadedNameIDs.contains(tab.id),
                         faviconHidden: launchedIDs.contains(tab.id)
                     )
                     .background(
@@ -746,10 +748,10 @@ struct OpenTabsSection: View {
                                 )
                         }
                     )
-                    .padding(.bottom, isBeingCleaned && rowsCollapsed ? 0 : 4)
-                    .frame(height: isBeingCleaned && rowsCollapsed ? 0 : 36)
+                    .padding(.bottom, collapsedIDs.contains(tab.id) ? 0 : 4)
+                    .frame(height: collapsedIDs.contains(tab.id) ? 0 : 36)
                     .clipped()
-                    .opacity(isBeingCleaned && rowsCollapsed ? 0 : 1)
+                    .opacity(collapsedIDs.contains(tab.id) ? 0 : 1)
                 }
 
                 if let lastTab = tabs.last {
