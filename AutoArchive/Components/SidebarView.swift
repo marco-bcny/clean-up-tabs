@@ -80,9 +80,9 @@ struct ArcFlightModifier: ViewModifier, Animatable {
             let dismissT = min(progress - 1.0, 1.0)
             return 1.0 - dismissT
         }
-        // Fade out as approaching landing for non-stack favicons
-        if fadesOnLanding && progress > 0.5 {
-            return max(0, 1.0 - (progress - 0.5) / 0.5)
+        // Fade out right at landing for non-stack favicons
+        if fadesOnLanding && progress > 0.9 {
+            return max(0, 1.0 - (progress - 0.9) / 0.1)
         }
         return 1.0
     }
@@ -196,6 +196,8 @@ struct SidebarView: View {
     @State private var personalHidden = false
     @State private var platterScale: CGFloat = 1.0
     @State private var platterOpacity: CGFloat = 1.0
+    @State private var strokeTrim: CGFloat = 0
+    @State private var strokeOpacity: CGFloat = 1.0
 
     // Position tracking
     @State private var tabPositions: [UUID: CGRect] = [:]
@@ -216,7 +218,9 @@ struct SidebarView: View {
                 showGlow: showGlow,
                 personalHidden: personalHidden,
                 platterScale: platterScale,
-                platterOpacity: platterOpacity
+                platterOpacity: platterOpacity,
+                strokeTrim: strokeTrim,
+                strokeOpacity: strokeOpacity
             )
 
             PinnedTabsView(tabs: pinnedTabs)
@@ -302,6 +306,8 @@ struct SidebarView: View {
             expandPlatter = false
             personalHidden = false
             showGlow = false
+            strokeTrim = 0
+            strokeOpacity = 1.0
             for item in flyingItems {
                 flightProgress[item.id] = 2.0
             }
@@ -340,6 +346,8 @@ struct SidebarView: View {
             expandPlatter = false
             personalHidden = false
             showGlow = false
+            strokeTrim = 0
+            strokeOpacity = 1.0
             for item in flyingItems {
                 flightProgress[item.id] = 2.0
             }
@@ -442,7 +450,7 @@ struct SidebarView: View {
 
         // Phase 3b: Fly favicons (staggered) — each launches from its current row position
         for (index, tab) in tabsToRemove.enumerated() {
-            let delay = 0.15 + Double(index) * 0.06
+            let delay = 0.15 + Double(index) * 0.12
             flightProgress[tab.id] = 0
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 // Capture current position at launch time
@@ -470,7 +478,7 @@ struct SidebarView: View {
         }
 
         // Phase 5a: Remove tabs after they fully land (keep stack visible)
-        let lastDelay = Double(max(0, totalCount - 1)) * 0.06
+        let lastDelay = Double(max(0, totalCount - 1)) * 0.12
         let allLandTime = 0.15 + lastDelay + 0.69 + 0.15
         DispatchQueue.main.asyncAfter(deadline: .now() + allLandTime) {
             // Remove tabs while they're still collapsed (height 0), then reset state
@@ -485,6 +493,23 @@ struct SidebarView: View {
             namesFaded = false
             rowsCollapsed = false
             launchedIDs = []
+        }
+
+        // Start rainbow stroke 1s before second favicon lands
+        let secondLandTime = 0.15 + Double(min(1, totalCount - 1)) * 0.12 + 0.69
+        let strokeStart = max(0.05, secondLandTime - 1.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + strokeStart) {
+            strokeTrim = 0
+            strokeOpacity = 1.0
+            withAnimation(.linear(duration: 2.0)) {
+                strokeTrim = 4.0
+            }
+            // Fade stroke out well before it stops
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
+                withAnimation(.easeOut(duration: 0.5)) {
+                    strokeOpacity = 0
+                }
+            }
         }
 
         // Phase 5b: Expand platter to reveal label as favicons start flying
@@ -520,6 +545,66 @@ enum DiaChroma {
     static let gradientColors: [Color] = [maroon, darkBlue, lightBlue, yellow, red, pink, maroon]
 }
 
+// MARK: - Rainbow Stroke
+
+struct RainbowStrokeView: View, Animatable {
+    var progress: CGFloat
+    var rotation: Double
+    let cornerRadius: CGFloat
+
+    nonisolated var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        let segmentLength: CGFloat = 1.0 / 3.0
+        let leading = progress - segmentLength
+        let from = leading.truncatingRemainder(dividingBy: 1.0)
+        let to = progress.truncatingRemainder(dividingBy: 1.0)
+        let normalizedFrom = from < 0 ? from + 1.0 : from
+        let normalizedTo = to <= 0 && progress > 0 ? 1.0 : (to < 0 ? to + 1.0 : to)
+        let wraps = normalizedFrom >= normalizedTo
+
+        ZStack {
+            if wraps {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .trim(from: normalizedFrom, to: 1.0)
+                    .stroke(
+                        AngularGradient(
+                            colors: DiaChroma.gradientColors,
+                            center: .center,
+                            angle: .degrees(rotation)
+                        ),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                    )
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .trim(from: 0, to: normalizedTo)
+                    .stroke(
+                        AngularGradient(
+                            colors: DiaChroma.gradientColors,
+                            center: .center,
+                            angle: .degrees(rotation)
+                        ),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                    )
+            } else {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .trim(from: normalizedFrom, to: normalizedTo)
+                    .stroke(
+                        AngularGradient(
+                            colors: DiaChroma.gradientColors,
+                            center: .center,
+                            angle: .degrees(rotation)
+                        ),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                    )
+            }
+        }
+        .padding(-1.5)
+    }
+}
+
 struct TopActionsBar: View {
     var showPlatter: Bool = false
     var expandPlatter: Bool = false
@@ -529,6 +614,8 @@ struct TopActionsBar: View {
     var personalHidden: Bool = false
     var platterScale: CGFloat = 1.0
     var platterOpacity: CGFloat = 1.0
+    var strokeTrim: CGFloat = 0
+    var strokeOpacity: CGFloat = 1.0
 
     @State private var isChevronHovered = false
     @State private var glowRotation: Double = 0
@@ -583,21 +670,14 @@ struct TopActionsBar: View {
                         .opacity(platterOpacity)
                 }
             }
-            .background {
-                if showGlow {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(
-                            AngularGradient(
-                                colors: DiaChroma.gradientColors,
-                                center: .center,
-                                angle: .degrees(glowRotation)
-                            )
-                        )
-                        .blur(radius: 8)
-                        .opacity(0.2)
-                        .scaleEffect(expandPlatter ? 1.15 : 1.15 * platterScale)
-                        .padding(.leading, expandPlatter ? -8 : 0)
-                }
+            .overlay {
+                RainbowStrokeView(
+                    progress: strokeTrim,
+                    rotation: glowRotation,
+                    cornerRadius: 12
+                )
+                .padding(.leading, expandPlatter ? -8 : 0)
+                .opacity(strokeTrim > 0 ? strokeOpacity * 0.5 : 0)
             }
             .onChange(of: showGlow) { _, active in
                 if active {
